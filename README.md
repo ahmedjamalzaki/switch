@@ -6,9 +6,9 @@
 
 **حوّل النص المكتوب بخطأ من العربية إلى الإنجليزية أو العكس بضغطة واحدة!**
 
-[![Release](https://img.shields.io/github/v/release/ahmedjamalzaki/switch?label=إصدار&color=blue)](https://github.com/ahmedjamalzaki/switch/releases/latest)
-[![Platform](https://img.shields.io/badge/نظام_التشغيل-Windows-blue?logo=windows)](https://github.com/ahmedjamalzaki/switch/releases/latest)
-[![License](https://img.shields.io/badge/الرخصة-MIT-green)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/ahmedjamalzaki/switch?label=Release&color=blue)](https://github.com/ahmedjamalzaki/switch/releases/latest)
+[![Platform](https://img.shields.io/badge/WindowsOS-blue?logo=windows)](https://github.com/ahmedjamalzaki/switch/releases/latest)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 </div>
 
