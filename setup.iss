@@ -2,7 +2,7 @@
 ; Custom designed to support Arabic and English installations, non-admin installation, desktop icon, and startup launch.
 
 #define MyAppName "Switch"
-#define MyAppVersion "1.0"
+#define MyAppVersion "1.1"
 #define MyAppPublisher "@ahmedjamalzaki"
 #define MyAppExeName "switch.exe"
 

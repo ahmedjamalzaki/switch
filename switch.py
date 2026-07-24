@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Switch - Smart Keyboard Layout Text Converter
-Author: AI Assistant
+Author: @ahmedjamalzaki
 Description: A background script that fixes text typed in the wrong keyboard layout
 (Arabic 101 <-> English QWERTY) using a hotkey (Ctrl + Shift + Space).
 """
@@ -96,6 +96,9 @@ ar_ligatures = {
 
 # Lock to prevent concurrent execution of the hotkey handler
 processing_lock = threading.Lock()
+
+# Event to signal the watchdog thread to stop
+_stop_event = threading.Event()
 
 
 def is_arabic_char(char: str) -> bool:
@@ -365,6 +368,31 @@ def setup_tray_icon():
         print(f"Error starting system tray icon: {e}", file=sys.stderr)
 
 
+def hotkey_watchdog():
+    """
+    Watchdog thread: periodically re-registers the global hotkey to prevent
+    it from silently dying after prolonged inactivity.
+
+    Windows may silently remove low-level keyboard hooks that appear
+    unresponsive (controlled by the 'LowLevelHooksTimeout' registry value,
+    defaulting to ~300 ms per event). Even if the hook is not removed,
+    re-registering it every WATCHDOG_INTERVAL seconds ensures the listener
+    is always alive without any user-visible disruption.
+    """
+    WATCHDOG_INTERVAL = 30  # seconds between re-registration checks
+
+    while not _stop_event.wait(timeout=WATCHDOG_INTERVAL):
+        try:
+            keyboard.remove_hotkey(HOTKEY)
+        except Exception:
+            pass  # hotkey might already be gone — that's fine
+        try:
+            keyboard.add_hotkey(HOTKEY, on_hotkey_pressed)
+            print("Watchdog: hotkey re-registered successfully.", file=sys.stderr)
+        except Exception as e:
+            print(f"Watchdog: failed to re-register hotkey: {e}", file=sys.stderr)
+
+
 def main():
     # If run with --test, execute unit tests
     if "--test" in sys.argv:
@@ -388,11 +416,17 @@ def main():
     # Register the keyboard hook
     keyboard.add_hotkey(HOTKEY, on_hotkey_pressed)
 
-    # Keep the script running (keyboard.wait blocks indefinitely)
+    # Start watchdog thread to re-register hotkey after long inactivity periods
+    threading.Thread(target=hotkey_watchdog, daemon=True).start()
+
+    # Keep the script running
     try:
-        keyboard.wait()
+        while not _stop_event.is_set():
+            time.sleep(1)
     except KeyboardInterrupt:
         print("\nSwitch has been stopped.")
+    finally:
+        _stop_event.set()
 
 
 if __name__ == "__main__":
