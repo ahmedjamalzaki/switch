@@ -32,6 +32,7 @@
 - 🔔 **أيقونة في شريط المهام** — سهل الوصول والتحكم
 - 📋 **يحافظ على الحافظة** — يستعيد محتوى الـ Clipboard الأصلي بعد التحويل
 - 🚀 **يبدأ مع ويندوز** — اختياري عند التثبيت
+- 🛡️ **مستقر دائماً** — Watchdog Thread يضمن عمل الاختصار حتى بعد ساعات من الخمول
 
 ---
 
@@ -39,7 +40,7 @@
 
 > **للتثبيت السهل والسريع:**
 
-[![تنزيل الآن](https://img.shields.io/badge/⬇️_تنزيل_Switch_Setup.exe-blue?style=for-the-badge)](https://github.com/ahmedjamalzaki/switch/releases/latest)
+[![Download now](https://img.shields.io/badge/⬇️_Download_Switch_Setup.exe-blue?style=for-the-badge)](https://github.com/ahmedjamalzaki/switch/releases/latest)
 
 1. حمّل ملف `Switch_Setup.exe` من [صفحة الإصدارات](https://github.com/ahmedjamalzaki/switch/releases/latest)
 2. شغّل الملف وأكمل خطوات التثبيت
@@ -66,7 +67,7 @@
 
 ```bash
 # 1. تثبيت المتطلبات
-pip install keyboard pyperclip pystray pillow
+pip install -r requirements.txt
 
 # 2. تشغيل البرنامج
 python switch.py
@@ -75,7 +76,7 @@ python switch.py
 python switch.py --test
 
 # 4. بناء ملف exe
-python -m PyInstaller --noconsole --onefile --add-data "logo.ico;." --icon=logo.ico switch.py
+python -m PyInstaller switch.spec
 ```
 
 ---
@@ -86,6 +87,9 @@ python -m PyInstaller --noconsole --onefile --add-data "logo.ico;." --icon=logo.
 switch/
 ├── switch.py          # الكود الرئيسي للبرنامج
 ├── setup.iss          # ملف بناء المثبت (Inno Setup)
+├── switch.spec        # ملف تكوين PyInstaller
+├── requirements.txt   # متطلبات Python
+├── .gitignore         # ملفات مستبعدة من Git
 ├── logo.png           # شعار البرنامج
 ├── logo.ico           # أيقونة البرنامج
 ├── dist/
@@ -100,6 +104,19 @@ switch/
 
 - نظام ويندوز 7 أو أحدث (32/64 بت)
 - لا يحتاج تثبيت Python أو أي برامج إضافية (المثبت يتضمن كل شيء)
+
+---
+
+## 📝 سجل التغييرات
+
+### v1.4
+- 🛡️ إصلاح مشكلة توقف الاختصار بعد الخمول الطويل عبر Watchdog Thread
+- 📄 إضافة ملف `LICENSE` (MIT)
+- 📦 إضافة ملف `requirements.txt`
+- 🚫 إضافة ملف `.gitignore`
+
+### v1.3
+- إصدارات سابقة
 
 ---
 
