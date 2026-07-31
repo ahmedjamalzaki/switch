@@ -1,10 +1,11 @@
 ; Inno Setup Script for Switch Keyboard Layout Converter
-; Custom designed to support Arabic and English installations, non-admin installation, desktop icon, and startup launch.
+; Arabic/English installer. It installs an elevated application and can start it
+; automatically through a highest-privilege scheduled task.
 
 #define MyAppName "Switch"
-#define MyAppVersion "1.1"
+#define MyAppVersion "1.4"
 #define MyAppPublisher "@ahmedjamalzaki"
-#define MyAppExeName "switch.exe"
+#define MyAppExeName "Switch.exe"
 
 [Setup]
 ; Unique identifier for the installation
@@ -13,11 +14,12 @@ AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppCopyright=Copyright © @ahmedjamalzaki
-DefaultDirName={localappdata}\Programs\{#MyAppName}
+DefaultDirName={autopf}\{#MyAppName}
 UsePreviousAppDir=no
 DisableProgramGroupPage=yes
-; Install for the current user only (no admin rights required)
-PrivilegesRequired=lowest
+ShowLanguageDialog=yes
+; Required: Switch uses a manifest that always runs with administrator rights.
+PrivilegesRequired=admin
 OutputBaseFilename=Switch_Setup
 SetupIconFile=logo.ico
 Compression=lzma
@@ -38,18 +40,43 @@ arabic.RunAtStartup=تشغيل برنامج Switch تلقائياً عند بد�
 english.LaunchApp=Launch Switch now
 arabic.LaunchApp=تشغيل برنامج Switch الآن
 
+english.AdminNoticeTitle=Administrator permission
+arabic.AdminNoticeTitle=صلاحية المسؤول
+english.AdminNotice=Switch requires administrator permission so it can work with applications that are also running as administrator. The permission request shown by Windows is expected.
+arabic.AdminNotice=يحتاج Switch إلى صلاحية المسؤول لكي يعمل مع البرامج التي تعمل بصلاحية المسؤول أيضاً. طلب الصلاحية الذي يظهر من ويندوز أمر متوقع.
+
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"
 Name: "startup"; Description: "{cm:RunAtStartup}"
 
 [Files]
-Source: "dist\switch.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "Switch\bin\Release\Switch.admin.exe"; DestDir: "{app}"; DestName: "{#MyAppExeName}"; Flags: ignoreversion
 Source: "logo.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
-Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: startup
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent
+; A Startup-folder shortcut cannot silently elevate. A scheduled task can run at
+; the highest privilege after the user has approved this administrator installer.
+Filename: "{cmd}"; Parameters: "/c schtasks.exe /create /tn ""Switch"" /tr """"""{app}\{#MyAppExeName}"""""" /sc onlogon /rl highest /f"; Flags: runhidden; Tasks: startup
+; ShellExecute is required here because Switch.exe has requireAdministrator in
+; its manifest. CreateProcess would fail with Windows error 740.
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent shellexec
+
+[UninstallRun]
+Filename: "{cmd}"; Parameters: "/c schtasks.exe /delete /tn ""Switch"" /f"; Flags: runhidden; RunOnceId: "RemoveSwitchStartupTask"
+
+[Code]
+var
+  AdminNoticePage: TOutputMsgWizardPage;
+
+procedure InitializeWizard;
+begin
+  AdminNoticePage := CreateOutputMsgPage(
+    wpWelcome,
+    CustomMessage('AdminNoticeTitle'),
+    CustomMessage('AdminNoticeTitle'),
+    CustomMessage('AdminNotice'));
+end;

@@ -1,23 +1,9 @@
-# === PyInstaller Build Artifacts ===
-build/
-dist/
-*.spec.bak
-
-# === Inno Setup Output ===
-Output/
-
-# === Python Cache ===
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.pyc
-
-# === Virtual Environments ===
-.venv/
-venv/
-env/
-ENV/
+# === .NET build artifacts ===
+Switch/bin/
+Switch/obj/
+Installer/bin/
+Installer/obj/
+*.admin.exe
 
 # === IDEs & Editors ===
 .vscode/

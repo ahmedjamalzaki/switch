@@ -4,124 +4,48 @@
 
 # Switch — محول تخطيط لوحة المفاتيح
 
-**حوّل النص المكتوب بخطأ من العربية إلى الإنجليزية أو العكس بضغطة واحدة!**
-
-[![Release](https://img.shields.io/github/v/release/ahmedjamalzaki/switch?label=Release&color=blue)](https://github.com/ahmedjamalzaki/switch/releases/latest)
-[![Platform](https://img.shields.io/badge/WindowsOS-blue?logo=windows)](https://github.com/ahmedjamalzaki/switch/releases/latest)
-[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+**تطبيق C# لويندوز يحول النص المكتوب بتخطيط عربي أو إنجليزي خاطئ بضغطة واحدة.**
 
 </div>
 
----
+## الاستخدام
 
-## 📖 عن البرنامج
+1. شغّل `Switch.exe`.
+2. حدد النص في أي تطبيق.
+3. اضغط `Ctrl + Shift + Space`.
 
-**Switch** هو برنامج خفيف يعمل في خلفية نظام ويندوز، يتيح لك تصحيح النص الذي كتبته بلغة خاطئة بضغطة اختصار واحدة.
+سيستبدل Switch النص المحدد بالناتج المحول بين Arabic 101 وEnglish QWERTY. يظهر التطبيق كأيقونة في منطقة الإشعارات؛ اضغط عليها بالزر الأيمن ثم اختر **خروج** لإيقافه.
 
-مثال عملي:
-- كتبت `شاثي` وأنت تقصد `done` ؟ → حدد النص واضغط `Ctrl + Shift + Space` وسيتحول فوراً إلى `done`!
-- كتبت `اثممخ` وأنت تقصد `hello` ؟ → نفس الاختصار يحوّله للعربية بنفس السرعة!
+## البنية
 
----
-
-## ✨ المميزات
-
-- ⚡ **سريع جداً** — تحويل فوري بدون تأخير ملحوظ
-- 🔄 **تحويل ذكي** — يكتشف تلقائياً هل النص عربي أو إنجليزي ويحوّله للآخر
-- 🖥️ **يعمل في الخلفية** — لا يزعجك بأي نوافذ أثناء العمل
-- 🔔 **أيقونة في شريط المهام** — سهل الوصول والتحكم
-- 📋 **يحافظ على الحافظة** — يستعيد محتوى الـ Clipboard الأصلي بعد التحويل
-- 🚀 **يبدأ مع ويندوز** — اختياري عند التثبيت
-- 🛡️ **مستقر دائماً** — Watchdog Thread يضمن عمل الاختصار حتى بعد ساعات من الخمول
-
----
-
-## 📥 التنزيل والتثبيت
-
-> **للتثبيت السهل والسريع:**
-
-[![Download now](https://img.shields.io/badge/⬇️_Download_Switch_Setup.exe-blue?style=for-the-badge)](https://github.com/ahmedjamalzaki/switch/releases/latest)
-
-1. حمّل ملف `Switch_Setup.exe` من [صفحة الإصدارات](https://github.com/ahmedjamalzaki/switch/releases/latest)
-2. شغّل الملف وأكمل خطوات التثبيت
-3. ابدأ استخدام البرنامج فوراً!
-
-> لا يحتاج البرنامج صلاحيات مدير (Admin) للتثبيت.
-
----
-
-## 🎮 طريقة الاستخدام
-
-| الخطوة | الإجراء |
-|--------|---------|
-| 1️⃣ | اكتب النص بأي تطبيق (Word, Notepad, متصفح...) |
-| 2️⃣ | حدد النص المكتوب بخطأ بالفأرة أو `Ctrl+A` |
-| 3️⃣ | اضغط `Ctrl + Shift + Space` |
-| ✅ | سيتحول النص تلقائياً للغة الصحيحة! |
-
----
-
-## 🛠️ البناء من المصدر
-
-إذا أردت تشغيل البرنامج من الكود المصدري:
-
-```bash
-# 1. تثبيت المتطلبات
-pip install -r requirements.txt
-
-# 2. تشغيل البرنامج
-python switch.py
-
-# 3. تشغيل الاختبارات
-python switch.py --test
-
-# 4. بناء ملف exe
-python -m PyInstaller switch.spec
+```text
+Switch/
+├── Program.cs                  نقطة تشغيل تطبيق Windows Forms (STA)
+├── HotkeyWindow.cs             الاختصار العام، الحافظة، وأيقونة شريط المهام
+├── KeyboardLayoutConverter.cs  خريطة Arabic 101 ↔ QWERTY ومنطق التحويل
+├── NativeMethods.cs            استدعاءات Win32 الضرورية
+├── SelfTests.cs                اختبارات التحويل المدمجة
+└── Switch.csproj               مشروع .NET Framework 4.8
 ```
 
----
+## المتطلبات والبناء
 
-## 🗂️ هيكل المشروع
+- Windows مع **.NET Framework 4.8**.
+- Visual Studio 2022 أو Build Tools مع **.NET Framework 4.8 Developer Pack / Targeting Pack** للبناء.
+- Inno Setup اختياريًا لبناء المثبّت.
 
-```
-switch/
-├── switch.py          # الكود الرئيسي للبرنامج
-├── setup.iss          # ملف بناء المثبت (Inno Setup)
-├── switch.spec        # ملف تكوين PyInstaller
-├── requirements.txt   # متطلبات Python
-├── .gitignore         # ملفات مستبعدة من Git
-├── logo.png           # شعار البرنامج
-├── logo.ico           # أيقونة البرنامج
-├── dist/
-│   └── switch.exe     # الملف التنفيذي المُجمَّع
-└── Output/
-    └── Switch_Setup.exe  # مثبت البرنامج
+```powershell
+MSBuild .\Switch\Switch.csproj /t:Rebuild /p:Configuration=Release
 ```
 
----
+ينتج الملف التنفيذي في `Switch\bin\Release\Switch.exe`. بعد ذلك شغّل `setup.iss` في Inno Setup لإنتاج `Output\Switch_Setup.exe`.
 
-## 📋 المتطلبات
+## ملاحظات تقنية
 
-- نظام ويندوز 7 أو أحدث (32/64 بت)
-- لا يحتاج تثبيت Python أو أي برامج إضافية (المثبت يتضمن كل شيء)
+- لا توجد حزم NuGet أو عمليات شبكة؛ يعتمد التطبيق على Windows Forms وWin32 فقط.
+- يُسجَّل الاختصار عبر `RegisterHotKey`، وهو أكثر ثباتًا من مراقبة keyboard hook في التنفيذ السابق.
+- تُحفظ الحافظة النصية وتُستعاد بعد التحويل. أما عناصر الحافظة غير النصية (مثل الصور والملفات) فلا يمكن الحفاظ عليها بالواجهة المُدارة الحالية.
 
----
+## الرخصة
 
-## 📝 سجل التغييرات
-
-### v1.4
-- 🛡️ إصلاح مشكلة توقف الاختصار بعد الخمول الطويل عبر Watchdog Thread
-- 📄 إضافة ملف `LICENSE` (MIT)
-- 📦 إضافة ملف `requirements.txt`
-- 🚫 إضافة ملف `.gitignore`
-
-### v1.3
-- إصدارات سابقة
-
----
-
-## 📄 الرخصة
-
-هذا البرنامج مرخص تحت رخصة [MIT](LICENSE).
-
-**حقوق النشر محفوظة © 2025 [ahmedjamalzaki](https://github.com/ahmedjamalzaki)**
+مرخص تحت [MIT](LICENSE).
