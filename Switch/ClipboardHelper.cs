@@ -1,76 +1,98 @@
 using System;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Windows.Forms;
 
 namespace Switch
 {
     internal static class ClipboardHelper
     {
-        private const int Attempts = 12;
-        private const int RetryDelayMilliseconds = 50;
-
-        internal static bool TryGetText(out string text)
+        internal sealed class DataReadResult
         {
-            text = null;
-            for (var attempt = 0; attempt < Attempts; attempt++)
+            internal readonly bool Succeeded;
+            internal readonly IDataObject Data;
+
+            internal DataReadResult(bool succeeded, IDataObject data)
             {
-                try
-                {
-                    if (Clipboard.ContainsText()) text = Clipboard.GetText();
-                    return true;
-                }
-                catch (ExternalException)
-                {
-                    Thread.Sleep(RetryDelayMilliseconds);
-                }
+                Succeeded = succeeded;
+                Data = data;
             }
-            return false;
         }
 
-        internal static bool TryClear()
+        internal sealed class TextReadResult
         {
-            for (var attempt = 0; attempt < Attempts; attempt++)
+            internal readonly bool Succeeded;
+            internal readonly string Text;
+
+            internal TextReadResult(bool succeeded, string text)
             {
-                try
-                {
-                    Clipboard.Clear();
-                    return true;
-                }
-                catch (ExternalException)
-                {
-                    Thread.Sleep(RetryDelayMilliseconds);
-                }
+                Succeeded = succeeded;
+                Text = text;
             }
-            return false;
         }
 
-        internal static bool TrySetText(string text)
+        internal static DataReadResult ReadDataObjectOnce()
         {
-            for (var attempt = 0; attempt < Attempts; attempt++)
+            try
             {
-                try
-                {
-                    Clipboard.SetText(text ?? string.Empty);
-                    return true;
-                }
-                catch (ExternalException)
-                {
-                    Thread.Sleep(RetryDelayMilliseconds);
-                }
+                return new DataReadResult(true, Clipboard.GetDataObject());
             }
-            return false;
+            catch (ExternalException)
+            {
+                return new DataReadResult(false, null);
+            }
         }
 
-        internal static bool TryWaitForCopiedText(out string text)
+        internal static TextReadResult ReadTextOnce()
         {
-            text = null;
-            for (var attempt = 0; attempt < Attempts; attempt++)
+            try
             {
-                if (TryGetText(out text) && !string.IsNullOrEmpty(text)) return true;
-                Thread.Sleep(RetryDelayMilliseconds);
+                var text = Clipboard.ContainsText() ? Clipboard.GetText() : null;
+                return new TextReadResult(true, text);
             }
-            return false;
+            catch (ExternalException)
+            {
+                return new TextReadResult(false, null);
+            }
+        }
+
+        internal static bool TryClearOnce()
+        {
+            try
+            {
+                Clipboard.Clear();
+                return true;
+            }
+            catch (ExternalException)
+            {
+                return false;
+            }
+        }
+
+        internal static bool TrySetTextOnce(string text)
+        {
+            try
+            {
+                Clipboard.SetText(text ?? string.Empty);
+                return true;
+            }
+            catch (ExternalException)
+            {
+                return false;
+            }
+        }
+
+        internal static bool TryRestoreOnce(IDataObject data)
+        {
+            try
+            {
+                if (data == null) Clipboard.Clear();
+                else Clipboard.SetDataObject(data, true);
+                return true;
+            }
+            catch (ExternalException)
+            {
+                return false;
+            }
         }
     }
 }

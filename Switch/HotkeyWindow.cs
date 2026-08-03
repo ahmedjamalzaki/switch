@@ -9,11 +9,14 @@ namespace Switch
     internal sealed class HotkeyWindow : Form
     {
         private readonly NotifyIcon trayIcon;
+        private readonly ContextMenuStrip contextMenu;
+        private readonly CancellationTokenSource conversionCancellation = new CancellationTokenSource();
+        private readonly object inputSync = new object();
         private KeyboardHook keyboardHook;
 
-        // 0 = idle, 1 = busy. Interlocked because the hotkey fires on the hook
-        // thread while DoConversion runs on a ThreadPool thread.
-        private int _isProcessing;
+        private const int ClipboardAttempts = 12;
+        private const int ClipboardRetryDelayMs = 50;
+        private int isProcessing;
 
         internal HotkeyWindow()
         {
@@ -21,14 +24,16 @@ namespace Switch
             WindowState = FormWindowState.Minimized;
             Opacity = 0;
 
-            var menu = new ContextMenuStrip();
-            menu.Items.Add("خروج (Exit)", null, (_, __) => Close());
+            contextMenu = new ContextMenuStrip();
+            contextMenu.Items.Add("طريقة الاستخدام (How to use)", null, ShowHelp);
+            contextMenu.Items.Add(new ToolStripSeparator());
+            contextMenu.Items.Add("خروج (Exit)", null, (_, __) => Close());
             trayIcon = new NotifyIcon
             {
                 Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath)
                        ?? SystemIcons.Application,
                 Text = "Switch - محول النص العربي والإنجليزي",
-                ContextMenuStrip = menu,
+                ContextMenuStrip = contextMenu,
                 Visible = true
             };
         }
@@ -36,9 +41,20 @@ namespace Switch
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
-            keyboardHook = new KeyboardHook(OnGlobalHotkeyPressed);
-            if (!keyboardHook.Start())
+            try
             {
+                keyboardHook = new KeyboardHook(OnGlobalHotkeyPressed);
+                if (!keyboardHook.Start())
+                {
+                    ErrorLog.Write("keyboard-hook", new InvalidOperationException("Unable to install the low-level keyboard hook."));
+                    trayIcon.ShowBalloonTip(5000, "Switch",
+                        "تعذر تشغيل مراقبة لوحة المفاتيح. أعد تشغيل البرنامج.",
+                        ToolTipIcon.Warning);
+                }
+            }
+            catch (Exception exception)
+            {
+                ErrorLog.Write("keyboard-hook", exception);
                 trayIcon.ShowBalloonTip(5000, "Switch",
                     "تعذر تشغيل مراقبة لوحة المفاتيح. أعد تشغيل البرنامج.",
                     ToolTipIcon.Warning);
@@ -53,8 +69,8 @@ namespace Switch
         // ------------------------------------------------------------------ //
         private void OnGlobalHotkeyPressed()
         {
-            if (!IsDisposed && IsHandleCreated)
-                Task.Run((Action)DoConversion);
+            if (!IsDisposed && IsHandleCreated && !conversionCancellation.IsCancellationRequested)
+                Task.Run(() => DoConversion(conversionCancellation.Token));
         }
 
         // ------------------------------------------------------------------ //
@@ -64,92 +80,166 @@ namespace Switch
         // Clipboard access (which requires the STA thread) is marshalled back
         // to the UI thread with SafeInvoke — a quick, non-sleeping call.
         // ------------------------------------------------------------------ //
-        private void DoConversion()
+        private void DoConversion(CancellationToken cancellationToken)
         {
-            // Allow only one conversion at a time (atomic swap).
-            if (Interlocked.CompareExchange(ref _isProcessing, 1, 0) != 0) return;
+            if (Interlocked.CompareExchange(ref isProcessing, 1, 0) != 0) return;
 
-            string originalClipboard = null;
+            IDataObject originalClipboard = null;
             var clipboardChanged = false;
             try
             {
-                // Wait until Ctrl + Shift + Space are fully released.
-                // Thread.Sleep here is fine — we are on a background thread.
-                WaitForHotkeyRelease();
+                if (cancellationToken.IsCancellationRequested) return;
+                WaitForHotkeyRelease(cancellationToken);
+                if (cancellationToken.IsCancellationRequested) return;
 
-                // Save and clear the clipboard on the STA (UI) thread.
-                SafeInvoke(() =>
-                {
-                    ClipboardHelper.TryGetText(out originalClipboard);
-                    ClipboardHelper.TryClear();
-                });
+                if (!TryGetClipboardSnapshot(cancellationToken, out originalClipboard)) return;
+                if (!TryRunOnUiWithRetry(ClipboardHelper.TryClearOnce, cancellationToken)) return;
                 clipboardChanged = true;
 
-                Thread.Sleep(50);                               // background — safe
-                NativeMethods.SendCopyOrPaste(NativeMethods.VkC);
-
-                // Poll for the newly copied text on the background thread.
-                // Each clipboard read is a single quick Invoke, while the
-                // sleep happens here (not on the UI thread).
-                string selectedText = null;
-                const int maxAttempts = 12;
-                const int retryDelayMs = 50;
-                for (var i = 0; i < maxAttempts && string.IsNullOrEmpty(selectedText); i++)
+                if (WaitWithCancellation(50, cancellationToken)) return;
+                lock (inputSync)
                 {
-                    Thread.Sleep(retryDelayMs);                 // background — safe
-                    SafeInvoke(() => ClipboardHelper.TryGetText(out selectedText));
+                    if (cancellationToken.IsCancellationRequested) return;
+                    NativeMethods.SendCopyOrPaste(NativeMethods.VkC);
                 }
 
-                if (string.IsNullOrEmpty(selectedText)) return;
+                string selectedText;
+                if (!TryReadSelectedText(cancellationToken, out selectedText)) return;
 
                 var convertedText = KeyboardLayoutConverter.Convert(selectedText);
-                if (convertedText == selectedText) return;
+                if (string.Equals(convertedText, selectedText, StringComparison.Ordinal)) return;
+                if (cancellationToken.IsCancellationRequested) return;
 
-                SafeInvoke(() => ClipboardHelper.TrySetText(convertedText));
-                Thread.Sleep(50);                               // background — safe
+                if (!TryRunOnUiWithRetry(() => ClipboardHelper.TrySetTextOnce(convertedText), cancellationToken)) return;
+                if (WaitWithCancellation(50, cancellationToken)) return;
 
-                NativeMethods.SendCopyOrPaste(NativeMethods.VkV);
-                Thread.Sleep(100);                              // background — safe
+                lock (inputSync)
+                {
+                    if (cancellationToken.IsCancellationRequested) return;
+                    NativeMethods.SendCopyOrPaste(NativeMethods.VkV);
+                }
+                WaitWithCancellation(100, cancellationToken);
             }
-            catch (Exception)
+            catch (Exception exception)
             {
+                ErrorLog.Write("conversion", exception);
                 SafeInvoke(() =>
                     trayIcon.ShowBalloonTip(3000, "Switch",
                         "حدث خطأ غير متوقع أثناء تحويل النص.", ToolTipIcon.Error));
             }
             finally
             {
-                // Always restore the original clipboard and release the lock.
                 if (clipboardChanged)
-                    SafeInvoke(() => ClipboardHelper.TrySetText(originalClipboard));
+                {
+                    if (!TryRunOnUiWithRetry(() => ClipboardHelper.TryRestoreOnce(originalClipboard), CancellationToken.None))
+                        ErrorLog.Write("clipboard-restore", new InvalidOperationException("Clipboard restoration failed."));
+                }
 
-                Interlocked.Exchange(ref _isProcessing, 0);
+                Interlocked.Exchange(ref isProcessing, 0);
             }
         }
 
-        // ------------------------------------------------------------------ //
-        // Marshals an action to the UI (STA) thread, but only when the form
-        // is still alive. Silently ignored if the form is already disposed.
-        // ------------------------------------------------------------------ //
-        private void SafeInvoke(MethodInvoker action)
+        private bool TryGetClipboardSnapshot(CancellationToken cancellationToken, out IDataObject data)
         {
-            if (IsDisposed || !IsHandleCreated) return;
-            try { Invoke(action); }
-            catch (ObjectDisposedException) { }
+            data = null;
+
+            for (var attempt = 0; attempt < ClipboardAttempts; attempt++)
+            {
+                ClipboardHelper.DataReadResult result = null;
+                SafeInvoke(() => result = ClipboardHelper.ReadDataObjectOnce());
+
+                if (result != null && result.Succeeded)
+                {
+                    data = result.Data;
+                    return true;
+                }
+
+                if (WaitWithCancellation(ClipboardRetryDelayMs, cancellationToken)) return false;
+            }
+
+            return false;
         }
 
-        // ------------------------------------------------------------------ //
-        // Spins on a background thread until all hotkey keys are released
-        // (or 1 s elapses). The UI thread is NOT involved, so the message
-        // pump keeps running and the hook stays responsive throughout.
-        // ------------------------------------------------------------------ //
-        private static void WaitForHotkeyRelease()
+        private bool TryReadSelectedText(CancellationToken cancellationToken, out string text)
+        {
+            text = null;
+            for (var attempt = 0; attempt < ClipboardAttempts; attempt++)
+            {
+                ClipboardHelper.TextReadResult result = null;
+                SafeInvoke(() => result = ClipboardHelper.ReadTextOnce());
+
+                if (result != null && result.Succeeded && !string.IsNullOrEmpty(result.Text))
+                {
+                    text = result.Text;
+                    return true;
+                }
+
+                if (WaitWithCancellation(ClipboardRetryDelayMs, cancellationToken)) return false;
+            }
+
+            return false;
+        }
+
+        private bool TryRunOnUi(Func<bool> operation)
+        {
+            var result = false;
+            if (!SafeInvoke(() => result = operation())) return false;
+            return result;
+        }
+
+        private bool TryRunOnUiWithRetry(Func<bool> operation, CancellationToken cancellationToken)
+        {
+            for (var attempt = 0; attempt < ClipboardAttempts; attempt++)
+            {
+                if (TryRunOnUi(operation)) return true;
+                if (WaitWithCancellation(ClipboardRetryDelayMs, cancellationToken)) return false;
+            }
+
+            return false;
+        }
+
+        private bool SafeInvoke(MethodInvoker action)
+        {
+            if (IsDisposed || !IsHandleCreated) return false;
+
+            try
+            {
+                Invoke(action);
+                return true;
+            }
+            catch (ObjectDisposedException)
+            {
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+        }
+
+        private static bool WaitWithCancellation(int milliseconds, CancellationToken cancellationToken)
+        {
+            var elapsed = 0;
+            const int slice = 10;
+
+            while (elapsed < milliseconds)
+            {
+                if (cancellationToken.IsCancellationRequested) return true;
+                var delay = Math.Min(slice, milliseconds - elapsed);
+                Thread.Sleep(delay);
+                elapsed += delay;
+            }
+
+            return cancellationToken.IsCancellationRequested;
+        }
+
+        private static void WaitForHotkeyRelease(CancellationToken cancellationToken)
         {
             const int maximumWaitMs = 1000;
             const int pollIntervalMs = 10;
             var elapsed = 0;
 
-            while (elapsed < maximumWaitMs &&
+            while (!cancellationToken.IsCancellationRequested && elapsed < maximumWaitMs &&
                    (NativeMethods.IsKeyDown(NativeMethods.VkControl) ||
                     NativeMethods.IsKeyDown(NativeMethods.VkShift) ||
                     NativeMethods.IsKeyDown(NativeMethods.VkSpaceByte)))
@@ -159,11 +249,25 @@ namespace Switch
             }
         }
 
+        private void ShowHelp(object sender, EventArgs e)
+        {
+            const string message = "حدد النص المكتوب بتخطيط خاطئ ثم اضغط Ctrl + Shift + Space لتحويله.\n\n" +
+                                   "لإيقاف البرنامج، افتح قائمة الأيقونة بجانب الساعة واختر خروج.";
+
+            MessageBox.Show(message, "Switch - EN ↔ AR", MessageBoxButtons.OK, MessageBoxIcon.Information,
+                MessageBoxDefaultButton.Button1, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+        }
+
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
+            lock (inputSync)
+            {
+                conversionCancellation.Cancel();
+            }
             if (keyboardHook != null) keyboardHook.Dispose();
             trayIcon.Visible = false;
             trayIcon.Dispose();
+            contextMenu.Dispose();
             base.OnFormClosed(e);
         }
     }
