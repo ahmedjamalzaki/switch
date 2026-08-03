@@ -3,14 +3,12 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{2AFD5B8A-5E62-4C63-B4DC-57E3BE341A2B}</ProjectGuid>
-    <OutputType>WinExe</OutputType>
-    <RootNamespace>Switch</RootNamespace>
-    <AssemblyName>Switch</AssemblyName>
+    <ProjectGuid>{D5B6A1C2-9E8C-4B43-8F3A-1D72F4C6A9E0}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Switch.Tests</RootNamespace>
+    <AssemblyName>Switch.Tests</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <TargetFrameworkProfile />
-    <ApplicationIcon>..\logo.ico</ApplicationIcon>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
     <LangVersion>5</LangVersion>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
@@ -29,19 +27,13 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System" />
-    <Reference Include="System.Drawing" />
-    <Reference Include="System.Windows.Forms" />
-  </ItemGroup>
-  <ItemGroup>
+    <Compile Include="..\Switch\KeyboardLayoutConverter.cs">
+      <Link>KeyboardLayoutConverter.cs</Link>
+    </Compile>
+    <Compile Include="..\Switch\SelfTests.cs">
+      <Link>SelfTests.cs</Link>
+    </Compile>
     <Compile Include="Program.cs" />
-    <Compile Include="KeyboardLayoutConverter.cs" />
-    <Compile Include="HotkeyWindow.cs" />
-    <Compile Include="NativeMethods.cs" />
-    <Compile Include="SelfTests.cs" />
-    <Compile Include="ClipboardHelper.cs" />
-    <Compile Include="KeyboardHook.cs" />
-    <Compile Include="ErrorLog.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

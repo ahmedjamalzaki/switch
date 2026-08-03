@@ -1,9 +1,8 @@
 # === .NET build artifacts ===
 Switch/bin/
 Switch/obj/
-Installer/bin/
-Installer/obj/
-*.admin.exe
+Switch.Tests/bin/
+Switch.Tests/obj/
 
 # === IDEs & Editors ===
 .vscode/

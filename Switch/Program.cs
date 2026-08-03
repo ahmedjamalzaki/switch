@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace Switch
@@ -15,23 +16,15 @@ namespace Switch
                 return;
             }
 
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-            ShowStartupMessage();
-            Application.Run(new HotkeyWindow());
-        }
+            bool createdNewInstance;
+            using (var singleInstance = new Mutex(true, @"Local\Switch.KeyboardLayoutConverter", out createdNewInstance))
+            {
+                if (!createdNewInstance) return;
 
-        private static void ShowStartupMessage()
-        {
-            const string message = "تم تشغيل برنامج Switch بنجاح وهو يعمل الآن في الخلفية.\n\n" +
-                "طريقة الاستخدام:\n\n" +
-                "1. حدد النص المكتوب بتخطيط خاطئ.\n" +
-                "2. اضغط Ctrl + Shift + Space لتحويله فوراً.\n" +
-                "للخروج من البرنامج، انقر بزر الفأرة الأيمن على الأيقونة بجانب الساعة واختر خروج.\n\n" +
-                "حقوق النشر محفوظة لـ ahmedjamalzaki@ ©"; ;
-
-            MessageBox.Show(message, "Switch - EN ↔ AR", MessageBoxButtons.OK, MessageBoxIcon.Information,
-                MessageBoxDefaultButton.Button1, MessageBoxOptions.RightAlign | MessageBoxOptions.RtlReading);
+                Application.EnableVisualStyles();
+                Application.SetCompatibleTextRenderingDefault(false);
+                Application.Run(new HotkeyWindow());
+            }
         }
     }
 }
