@@ -3,7 +3,7 @@
 ; visible Startup Apps entry that starts it through a highest-privilege task.
 
 #define MyAppName "Switch"
-#define MyAppVersion "2.0.1"
+#define MyAppVersion "2.0.2"
 #define MyAppPublisher "@ahmedjamalzaki"
 #define MyAppExeName "Switch.exe"
 #define MyAppStartupExeName "SwitchStartup.exe"
