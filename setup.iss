@@ -1,11 +1,12 @@
 ; Inno Setup Script for Switch Keyboard Layout Converter
-; Arabic/English installer. It installs an elevated application and starts it
-; automatically through a highest-privilege scheduled task.
+; Arabic/English installer. It installs an elevated application and exposes a
+; visible Startup Apps entry that starts it through a highest-privilege task.
 
 #define MyAppName "Switch"
 #define MyAppVersion "2.0.1"
 #define MyAppPublisher "@ahmedjamalzaki"
 #define MyAppExeName "Switch.exe"
+#define MyAppStartupExeName "SwitchStartup.exe"
 
 [Setup]
 ; Unique identifier for the installation
@@ -39,6 +40,9 @@ arabic.LaunchApp=تشغيل برنامج Switch الآن
 english.StartupTaskError=Switch was installed, but Windows could not configure automatic startup. Please run the installer again as administrator.
 arabic.StartupTaskError=تم تثبيت Switch، لكن تعذر إعداد التشغيل التلقائي مع ويندوز. يرجى تشغيل المثبّت مرة أخرى بصلاحية المسؤول.
 
+english.RunAtStartup=Launch Switch automatically at Windows startup
+arabic.RunAtStartup=تشغيل برنامج Switch تلقائياً عند بدء تشغيل ويندوز
+
 english.AdminNoticeTitle=Administrator permission
 arabic.AdminNoticeTitle=صلاحية المسؤول
 english.AdminNotice=Switch requires administrator permission so it can work with applications that are also running as administrator. The permission request shown by Windows is expected.
@@ -46,14 +50,19 @@ arabic.AdminNotice=يحتاج Switch إلى صلاحية المسؤول لكي �
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"
+Name: "startup"; Description: "{cm:RunAtStartup}"
 
 [Files]
 Source: "Switch\bin\Release\Switch.exe"; DestDir: "{app}"; DestName: "{#MyAppExeName}"; Flags: ignoreversion
+Source: "SwitchStartup\bin\Release\SwitchStartup.exe"; DestDir: "{app}"; DestName: "{#MyAppStartupExeName}"; Flags: ignoreversion
 Source: "logo.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+; The helper is non-elevated so Windows can list this shortcut in Startup Apps.
+; It invokes the elevated scheduled task, which launches Switch.exe silently.
+Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppStartupExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\logo.ico"; Tasks: startup
 
 [Run]
 ; ShellExecute is required here because Switch.exe has requireAdministrator in
@@ -69,6 +78,8 @@ const
   TaskActionExec = 0;
   StartupTaskName = 'Switch';
   StartupTaskFallbackFolder = '\Microsoft\Windows\Switch';
+  StartupRegistryKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+  StartupApprovedFolderKey = 'Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder';
 
 var
   AdminNoticePage: TOutputMsgWizardPage;
@@ -122,6 +133,7 @@ begin
     TaskDefinition.Principal.LogonType := TaskLogonInteractiveToken;
     TaskDefinition.Principal.RunLevel := TaskRunLevelHighest;
     TaskDefinition.Settings.Enabled := True;
+    TaskDefinition.Settings.AllowDemandStart := True;
     TaskDefinition.Settings.StartWhenAvailable := True;
 
     Trigger := TaskDefinition.Triggers.Create(TaskTriggerLogon);
@@ -129,6 +141,7 @@ begin
 
     Action := TaskDefinition.Actions.Create(TaskActionExec);
     Action.Path := ExpandConstant('{app}\{#MyAppExeName}');
+    Action.WorkingDirectory := ExpandConstant('{app}');
 
     TaskFolder.RegisterTaskDefinition(
       StartupTaskName, TaskDefinition, TaskCreateOrUpdate, '', '',
@@ -184,6 +197,14 @@ begin
   end;
 end;
 
+procedure RemoveLegacyStartupEntries;
+begin
+  { Older builds used a Run value and an earlier startup shortcut. Remove both
+    so Windows does not retain a stale or duplicate startup registration. }
+  RegDeleteValue(HKEY_CURRENT_USER, StartupRegistryKey, StartupTaskName);
+  RegDeleteValue(HKEY_CURRENT_USER, StartupApprovedFolderKey, StartupTaskName + '.lnk');
+end;
+
 procedure InitializeWizard;
 begin
   AdminNoticePage := CreateOutputMsgPage(
@@ -197,10 +218,18 @@ procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
-    if not ConfigureStartupTask then
+    RemoveLegacyStartupEntries;
+    { Remove registrations left by previous installer versions before creating
+      the new task, so both task locations cannot launch duplicate instances. }
+    RemoveStartupTasks;
+
+    if WizardIsTaskSelected('startup') then
     begin
-      MsgBox(CustomMessage('StartupTaskError'), mbError, MB_OK);
-      Abort;
+      if not ConfigureStartupTask then
+      begin
+        MsgBox(CustomMessage('StartupTaskError'), mbError, MB_OK);
+        Abort;
+      end;
     end;
   end;
 end;
@@ -208,5 +237,8 @@ end;
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
+  begin
     RemoveStartupTasks;
+    RemoveLegacyStartupEntries;
+  end;
 end;

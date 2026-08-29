@@ -7,9 +7,11 @@ $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
 $referenceAssemblies = Join-Path ${env:ProgramFiles(x86)} "Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8"
 $project = Join-Path $root "Switch\Switch.csproj"
+$startupProject = Join-Path $root "SwitchStartup\SwitchStartup.csproj"
 $testProject = Join-Path $root "Switch.Tests\Switch.Tests.csproj"
 $testOutput = Join-Path $root "Switch.Tests\bin\Release\Switch.Tests.exe"
 $output = Join-Path $root "Switch\bin\Release\Switch.exe"
+$startupOutput = Join-Path $root "SwitchStartup\bin\Release\SwitchStartup.exe"
 $installerScript = Join-Path $root "setup.iss"
 
 if (-not (Test-Path -LiteralPath $referenceAssemblies)) {
@@ -33,6 +35,13 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if (-not (Test-Path -LiteralPath $output)) {
     throw "Expected application output was not produced: $output"
+}
+
+& $msbuild $startupProject /t:Rebuild /p:Configuration=Release /p:Platform=AnyCPU
+if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+if (-not (Test-Path -LiteralPath $startupOutput)) {
+    throw "Expected startup launcher output was not produced: $startupOutput"
 }
 
 if (-not $SkipRuntimeTests) {
