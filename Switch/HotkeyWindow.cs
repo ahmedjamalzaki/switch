@@ -70,7 +70,16 @@ namespace Switch
         private void OnGlobalHotkeyPressed()
         {
             if (!IsDisposed && IsHandleCreated && !conversionCancellation.IsCancellationRequested)
-                Task.Run(() => DoConversion(conversionCancellation.Token));
+            {
+                try
+                {
+                    Task.Run(() => DoConversion(conversionCancellation.Token));
+                }
+                catch (Exception exception)
+                {
+                    ErrorLog.Write("conversion-schedule", exception);
+                }
+            }
         }
 
         // ------------------------------------------------------------------ //
@@ -213,6 +222,11 @@ namespace Switch
             }
             catch (InvalidOperationException)
             {
+                return false;
+            }
+            catch (Exception exception)
+            {
+                ErrorLog.Write("ui-invoke", exception);
                 return false;
             }
         }

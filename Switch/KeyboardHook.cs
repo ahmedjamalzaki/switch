@@ -36,25 +36,44 @@ namespace Switch
 
         private IntPtr HookCallback(int code, IntPtr wParam, IntPtr lParam)
         {
-            if (code >= 0)
+            try
             {
-                var message = wParam.ToInt32();
-                var key = Marshal.ReadInt32(lParam);
+                if (code >= 0)
+                {
+                    var message = wParam.ToInt32();
+                    var key = Marshal.ReadInt32(lParam);
 
-                if ((message == WmKeyUp || message == WmSysKeyUp) && key == NativeMethods.VkSpace)
-                {
-                    spaceIsDown = false;
-                }
-                else if ((message == WmKeyDown || message == WmSysKeyDown) && key == NativeMethods.VkSpace && !spaceIsDown)
-                {
-                    spaceIsDown = true;
-                    if (NativeMethods.IsKeyDown(NativeMethods.VkControl) && NativeMethods.IsKeyDown(NativeMethods.VkShift))
+                    if ((message == WmKeyUp || message == WmSysKeyUp) && key == NativeMethods.VkSpace)
                     {
-                        hotkeyPressed();
+                        spaceIsDown = false;
+                    }
+                    else if ((message == WmKeyDown || message == WmSysKeyDown) &&
+                             key == NativeMethods.VkSpace && !spaceIsDown)
+                    {
+                        spaceIsDown = true;
+                        if (NativeMethods.IsKeyDown(NativeMethods.VkControl) &&
+                            NativeMethods.IsKeyDown(NativeMethods.VkShift))
+                        {
+                            hotkeyPressed();
+                        }
                     }
                 }
             }
-            return CallNextHookEx(hookHandle, code, wParam, lParam);
+            catch (Exception exception)
+            {
+                // Exceptions must never cross the unmanaged hook callback.
+                ErrorLog.Write("keyboard-hook-callback", exception);
+            }
+
+            try
+            {
+                return CallNextHookEx(hookHandle, code, wParam, lParam);
+            }
+            catch (Exception exception)
+            {
+                ErrorLog.Write("keyboard-hook-next", exception);
+                return IntPtr.Zero;
+            }
         }
 
         public void Dispose()

@@ -1,12 +1,11 @@
 ; Inno Setup Script for Switch Keyboard Layout Converter
-; Arabic/English installer. It installs an elevated application and exposes a
-; visible Startup Apps entry that starts it through a highest-privilege task.
+; Arabic/English installer. It installs one application executable and exposes
+; a visible Startup Apps entry that starts it through a highest-privilege task.
 
 #define MyAppName "Switch"
-#define MyAppVersion "2.0.2"
+#define MyAppVersion "2.0.3"
 #define MyAppPublisher "@ahmedjamalzaki"
 #define MyAppExeName "Switch.exe"
-#define MyAppStartupExeName "SwitchStartup.exe"
 
 [Setup]
 ; Unique identifier for the installation
@@ -19,7 +18,7 @@ DefaultDirName={autopf}\{#MyAppName}
 UsePreviousAppDir=no
 DisableProgramGroupPage=yes
 ShowLanguageDialog=yes
-; Required: Switch uses a manifest that always runs with administrator rights.
+; Switch elevates itself when launched normally and uses the scheduled task at startup.
 PrivilegesRequired=admin
 OutputBaseFilename=Switch_Setup
 SetupIconFile=logo.ico
@@ -54,147 +53,140 @@ Name: "startup"; Description: "{cm:RunAtStartup}"
 
 [Files]
 Source: "Switch\bin\Release\Switch.exe"; DestDir: "{app}"; DestName: "{#MyAppExeName}"; Flags: ignoreversion
-Source: "SwitchStartup\bin\Release\SwitchStartup.exe"; DestDir: "{app}"; DestName: "{#MyAppStartupExeName}"; Flags: ignoreversion
 Source: "logo.ico"; DestDir: "{app}"; Flags: ignoreversion
+
+[InstallDelete]
+; Remove the helper shipped by v2.0.2 so upgrades leave one application exe.
+Type: files; Name: "{app}\SwitchStartup.exe"
+
+[UninstallDelete]
+; Also clean the helper if an older installation is removed directly.
+Type: files; Name: "{app}\SwitchStartup.exe"
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
-; The helper is non-elevated so Windows can list this shortcut in Startup Apps.
-; It invokes the elevated scheduled task, which launches Switch.exe silently.
-Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppStartupExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\logo.ico"; Tasks: startup
+; The main executable handles --startup without elevation, then invokes the
+; elevated scheduled task. This keeps a visible Startup Apps entry and one exe.
+Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; WorkingDir: "{app}"; IconFilename: "{app}\logo.ico"; Tasks: startup
 
 [Run]
-; ShellExecute is required here because Switch.exe has requireAdministrator in
-; its manifest. CreateProcess would fail with Windows error 740.
+; ShellExecute allows Switch.exe to request elevation when launched normally.
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent shellexec
 
 [Code]
 const
-  TaskCreateOrUpdate = 6;
-  TaskLogonInteractiveToken = 3;
-  TaskRunLevelHighest = 1;
-  TaskTriggerLogon = 9;
-  TaskActionExec = 0;
   StartupTaskName = 'Switch';
-  StartupTaskFallbackFolder = '\Microsoft\Windows\Switch';
+  StartupTaskRootName = '\Switch';
+  StartupTaskFallbackName = '\Microsoft\Windows\Switch';
   StartupRegistryKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
   StartupApprovedFolderKey = 'Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\StartupFolder';
 
 var
   AdminNoticePage: TOutputMsgWizardPage;
 
-function TryGetStartupTaskFolder(TaskService: Variant; var TaskFolder: Variant): Boolean;
-var
-  ParentFolder: Variant;
+function RunSchtasks(const Parameters: String; var ResultCode: Integer): Boolean;
 begin
-  Result := False;
-  try
-    { The normal Windows root folder is the preferred location. }
-    TaskFolder := TaskService.GetFolder('\');
-    Result := True;
-    exit;
-  except
-    { Some machines have a damaged or inaccessible root task folder. }
-  end;
+  Result := Exec(
+    ExpandConstant('{sys}\schtasks.exe'), Parameters, '', SW_HIDE,
+    ewWaitUntilTerminated, ResultCode);
+end;
 
-  try
-    { Keep a fallback task inside a standard Windows task namespace. }
-    try
-      TaskFolder := TaskService.GetFolder(StartupTaskFallbackFolder);
-    except
-      ParentFolder := TaskService.GetFolder('\Microsoft\Windows');
-      TaskFolder := ParentFolder.CreateFolder('Switch', '');
-    end;
-    Result := True;
-  except
-    Result := False;
-  end;
+function XmlEscape(const Value: String): String;
+begin
+  Result := Value;
+  StringChangeEx(Result, '&', '&amp;', True);
+  StringChangeEx(Result, '<', '&lt;', True);
+  StringChangeEx(Result, '>', '&gt;', True);
+end;
+
+function BuildStartupTaskXml: String;
+var
+  ApplicationPath: String;
+  WorkingDirectory: String;
+begin
+  ApplicationPath := XmlEscape(ExpandConstant('{app}\{#MyAppExeName}'));
+  WorkingDirectory := XmlEscape(ExpandConstant('{app}'));
+  Result :=
+    '<?xml version="1.0"?>' + #13#10 +
+    '<Task version="1.3" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">' + #13#10 +
+    '  <RegistrationInfo>' + #13#10 +
+    '    <Description>Starts Switch automatically when the user signs in.</Description>' + #13#10 +
+    '  </RegistrationInfo>' + #13#10 +
+    '  <Triggers>' + #13#10 +
+    '    <LogonTrigger><Enabled>true</Enabled></LogonTrigger>' + #13#10 +
+    '  </Triggers>' + #13#10 +
+    '  <Principals>' + #13#10 +
+    '    <Principal id="Author">' + #13#10 +
+    '      <LogonType>InteractiveToken</LogonType>' + #13#10 +
+    '      <RunLevel>HighestAvailable</RunLevel>' + #13#10 +
+    '    </Principal>' + #13#10 +
+    '  </Principals>' + #13#10 +
+    '  <Settings>' + #13#10 +
+    '    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>' + #13#10 +
+    '    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>' + #13#10 +
+    '    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>' + #13#10 +
+    '    <AllowHardTerminate>true</AllowHardTerminate>' + #13#10 +
+    '    <StartWhenAvailable>true</StartWhenAvailable>' + #13#10 +
+    '    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>' + #13#10 +
+    '    <RestartOnFailure><Interval>PT1M</Interval><Count>999</Count></RestartOnFailure>' + #13#10 +
+    '  </Settings>' + #13#10 +
+    '  <Actions Context="Author">' + #13#10 +
+    '    <Exec>' + #13#10 +
+    '      <Command>' + ApplicationPath + '</Command>' + #13#10 +
+    '      <WorkingDirectory>' + WorkingDirectory + '</WorkingDirectory>' + #13#10 +
+    '    </Exec>' + #13#10 +
+    '  </Actions>' + #13#10 +
+    '</Task>';
+end;
+
+function ConfigureStartupTaskAtPath(const TaskName, XmlPath: String): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Result := RunSchtasks(
+    '/Create /TN "' + TaskName + '" /XML "' + XmlPath + '" /F',
+    ResultCode) and (ResultCode = 0);
+  if not Result then
+    Log('Could not create startup task ' + TaskName + '. schtasks exit code: ' + IntToStr(ResultCode));
 end;
 
 function ConfigureStartupTask: Boolean;
 var
-  TaskService: Variant;
-  TaskFolder: Variant;
-  TaskDefinition: Variant;
-  Trigger: Variant;
-  Action: Variant;
+  XmlPath: String;
 begin
   Result := False;
+  XmlPath := ExpandConstant('{tmp}\SwitchStartup.xml');
+  if not SaveStringToFile(XmlPath, BuildStartupTaskXml, False) then
+  begin
+    Log('Could not write the startup task XML.');
+    exit;
+  end;
   try
-    TaskService := CreateOleObject('Schedule.Service');
-    TaskService.Connect;
-    if not TryGetStartupTaskFolder(TaskService, TaskFolder) then
-      exit;
-    TaskDefinition := TaskService.NewTask(0);
-
-    TaskDefinition.RegistrationInfo.Description :=
-      'Starts Switch automatically when the user signs in.';
-    TaskDefinition.Principal.LogonType := TaskLogonInteractiveToken;
-    TaskDefinition.Principal.RunLevel := TaskRunLevelHighest;
-    TaskDefinition.Settings.Enabled := True;
-    TaskDefinition.Settings.AllowDemandStart := True;
-    TaskDefinition.Settings.StartWhenAvailable := True;
-
-    Trigger := TaskDefinition.Triggers.Create(TaskTriggerLogon);
-    Trigger.Enabled := True;
-
-    Action := TaskDefinition.Actions.Create(TaskActionExec);
-    Action.Path := ExpandConstant('{app}\{#MyAppExeName}');
-    Action.WorkingDirectory := ExpandConstant('{app}');
-
-    TaskFolder.RegisterTaskDefinition(
-      StartupTaskName, TaskDefinition, TaskCreateOrUpdate, '', '',
-      TaskLogonInteractiveToken, '');
-    Result := True;
-  except
-    Result := False;
+    { schtasks.exe is used instead of late-bound Task Scheduler COM calls so
+      registration behaves consistently on Windows installations where the
+      COM registration API rejects optional empty parameters. }
+    Result := ConfigureStartupTaskAtPath(StartupTaskRootName, XmlPath);
+    if not Result then
+      Result := ConfigureStartupTaskAtPath(StartupTaskFallbackName, XmlPath);
+  finally
+    DeleteFile(XmlPath);
   end;
 end;
 
-procedure RemoveStartupTaskFromFolder(TaskFolder: Variant);
+procedure RemoveStartupTask(const TaskName: String);
+var
+  ResultCode: Integer;
 begin
-  try
-    TaskFolder.DeleteTask(StartupTaskName, 0);
-  except
-    { The task may already be absent. }
-  end;
+  { Deleting a missing task is intentionally harmless during upgrades and uninstall. }
+  RunSchtasks('/Delete /TN "' + TaskName + '" /F', ResultCode);
 end;
 
 procedure RemoveStartupTasks;
-var
-  TaskService: Variant;
-  TaskFolder: Variant;
-  ParentFolder: Variant;
 begin
-  try
-    TaskService := CreateOleObject('Schedule.Service');
-    TaskService.Connect;
-
-    { Remove both locations so upgrades clean up an older installation. }
-    try
-      TaskFolder := TaskService.GetFolder('\');
-      RemoveStartupTaskFromFolder(TaskFolder);
-    except
-      { The root folder may be unavailable on this machine. }
-    end;
-
-    try
-      TaskFolder := TaskService.GetFolder(StartupTaskFallbackFolder);
-      RemoveStartupTaskFromFolder(TaskFolder);
-    except
-      { The fallback task may already be absent. }
-    end;
-
-    try
-      ParentFolder := TaskService.GetFolder('\Microsoft\Windows');
-      ParentFolder.DeleteFolder('Switch', 0);
-    except
-      { Leave the folder in place if it is not empty or cannot be removed. }
-    end;
-  except
-    { Task Scheduler may be unavailable during uninstall. }
-  end;
+  { Remove both locations so upgrades clean up an older installation. }
+  RemoveStartupTask(StartupTaskRootName);
+  RemoveStartupTask(StartupTaskFallbackName);
 end;
 
 procedure RemoveLegacyStartupEntries;

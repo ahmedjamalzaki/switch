@@ -3,8 +3,6 @@ Switch/bin/
 Switch/obj/
 Switch.Tests/bin/
 Switch.Tests/obj/
-SwitchStartup/bin/
-SwitchStartup/obj/
 
 # === IDEs & Editors ===
 .vscode/

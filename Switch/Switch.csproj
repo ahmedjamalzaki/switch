@@ -41,6 +41,7 @@
     <Compile Include="ClipboardHelper.cs" />
     <Compile Include="KeyboardHook.cs" />
     <Compile Include="ErrorLog.cs" />
+    <Compile Include="StartupTaskLauncher.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
